@@ -1,9 +1,20 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Check, Clock3, Globe2, ShieldCheck, Sparkles, Zap } from "lucide-react";
-import { aiPlans, vpnPlans } from "../mockData";
-import type { AiPlan, StoreCategory, VpnPlan } from "../types";
+import type { StoreCategory } from "../types";
 import { formatNumber } from "../utils/format";
 import { SegmentedControl } from "./SegmentedControl";
+
+interface Product {
+  id: number;
+  type: StoreCategory;
+  name: string;
+  price_toman: number;
+  metadata: {
+    quota_gb?: number;
+    duration_months?: number;
+    type?: string;
+  };
+}
 
 interface StoreViewProps {
   onBuy: (name: string, price: number) => void;
@@ -11,6 +22,36 @@ interface StoreViewProps {
 
 export function StoreView({ onBuy }: StoreViewProps) {
   const [category, setCategory] = useState<StoreCategory>("vpn");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadProducts() {
+      try {
+        const response = await fetch("/api/products", { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`Products request failed (${response.status})`);
+        }
+        const data: unknown = await response.json();
+        if (!Array.isArray(data)) {
+          throw new Error("Products response was not an array");
+        }
+        setProducts(data as Product[]);
+        setError(null);
+      } catch (requestError) {
+        if (controller.signal.aborted) return;
+        setError(requestError instanceof Error ? requestError.message : "Unable to load products");
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false);
+      }
+    }
+
+    void loadProducts();
+    return () => controller.abort();
+  }, []);
 
   return (
     <section className="page-section" aria-label="فروشگاه">
@@ -50,9 +91,23 @@ export function StoreView({ onBuy }: StoreViewProps) {
       </div>
 
       <div className="product-grid" key={category}>
-        {category === "vpn"
-          ? vpnPlans.map((plan) => <VpnProductCard key={plan.id} plan={plan} onBuy={onBuy} />)
-          : aiPlans.map((plan) => <AiProductCard key={plan.id} plan={plan} onBuy={onBuy} />)}
+        {isLoading ? (
+          <p role="status">در حال بارگذاری محصولات…</p>
+        ) : error ? (
+          <p role="alert">بارگذاری محصولات ناموفق بود. {error}</p>
+        ) : products.filter((product) => product.type === category).length === 0 ? (
+          <p>در این دسته‌بندی محصول فعالی وجود ندارد.</p>
+        ) : (
+          products
+            .filter((product) => product.type === category)
+            .map((product) =>
+              product.type === "vpn" ? (
+                <VpnProductCard key={product.id} product={product} onBuy={onBuy} />
+              ) : (
+                <AiProductCard key={product.id} product={product} onBuy={onBuy} />
+              ),
+            )
+        )}
       </div>
 
       <div className="support-strip">
@@ -64,26 +119,28 @@ export function StoreView({ onBuy }: StoreViewProps) {
   );
 }
 
-function VpnProductCard({ plan, onBuy }: { plan: VpnPlan; onBuy: (name: string, price: number) => void }) {
+function VpnProductCard({ product, onBuy }: { product: Product; onBuy: (name: string, price: number) => void }) {
+  const quota = product.metadata.quota_gb;
+  const duration = product.metadata.duration_months;
+
   return (
-    <article className={`product-card vpn-product ${plan.popular ? "is-popular" : ""}`}>
-      {plan.popular && <span className="popular-ribbon"><Sparkles size={13} /> محبوب کاربران</span>}
+    <article className="product-card vpn-product">
       <div className="product-card-top">
         <span className="product-icon vpn-icon"><Globe2 size={22} /></span>
         <span className="country-bubble" aria-label="آلمان">🇩🇪</span>
       </div>
       <div className="product-title-block">
         <span className="product-kicker">VPN • آی‌پی ثابت</span>
-        <h3>{plan.name}</h3>
-        <p>{plan.subtitle}</p>
+        <h3>{product.name}</h3>
+        <p>مناسب استفاده روزمره</p>
       </div>
       <div className="product-specs">
-        <div><span className="spec-icon"><Zap size={15} /></span><span><small>حجم</small><strong>{plan.quota}</strong></span></div>
-        <div><span className="spec-icon"><Clock3 size={15} /></span><span><small>مدت اعتبار</small><strong>{plan.duration}</strong></span></div>
+        <div><span className="spec-icon"><Zap size={15} /></span><span><small>حجم</small><strong>{quota ? `${formatNumber(quota)} گیگابایت` : "نامحدود"}</strong></span></div>
+        <div><span className="spec-icon"><Clock3 size={15} /></span><span><small>مدت اعتبار</small><strong>{duration ? `${formatNumber(duration)} ماهه` : "—"}</strong></span></div>
       </div>
       <div className="product-card-footer">
-        <div className="product-price"><strong>{formatNumber(plan.price)}</strong><small>تومان</small></div>
-        <button className="button-primary buy-button" onClick={() => onBuy(plan.name, plan.price)} type="button">
+        <div className="product-price"><strong>{formatNumber(product.price_toman)}</strong><small>تومان</small></div>
+        <button className="button-primary buy-button" onClick={() => onBuy(product.name, product.price_toman)} type="button">
           خرید با کیف پول <ArrowLeft size={16} />
         </button>
       </div>
@@ -91,29 +148,32 @@ function VpnProductCard({ plan, onBuy }: { plan: VpnPlan; onBuy: (name: string, 
   );
 }
 
-function AiProductCard({ plan, onBuy }: { plan: AiPlan; onBuy: (name: string, price: number) => void }) {
+function AiProductCard({ product, onBuy }: { product: Product; onBuy: (name: string, price: number) => void }) {
+  const isShared = product.metadata.type === "shared";
+  const accent = product.name.toLowerCase().includes("claude") ? "violet" : "green";
+
   return (
     <article className="product-card ai-product">
       <div className="product-card-top">
-        <span className={`product-icon ai-icon ${plan.accent}`}><Sparkles size={21} /></span>
-        <span className={`plan-badge ${plan.planType === "اختصاصی" ? "private" : "shared"}`}>{plan.planType}</span>
+        <span className={`product-icon ai-icon ${accent}`}><Sparkles size={21} /></span>
+        <span className={`plan-badge ${isShared ? "shared" : "private"}`}>{isShared ? "اشتراکی" : "اختصاصی"}</span>
       </div>
       <div className="product-title-block">
         <span className="product-kicker">اشتراک هوش مصنوعی</span>
-        <h3>{plan.service}</h3>
-        <p>{plan.description}</p>
+        <h3>{product.name}</h3>
+        <p>دسترسی به مدل‌های پیشرفته و ابزارها</p>
       </div>
       <div className="ai-feature-list">
         <span><Check size={14} /> تحویل سریع و مطمئن</span>
-        <span><Check size={14} /> {plan.duration}</span>
+        <span><Check size={14} /> یک ماهه</span>
       </div>
       <div className="product-card-footer">
-        <div className="product-price"><strong>{formatNumber(plan.price)}</strong><small>تومان</small></div>
-        <button className="button-primary buy-button" onClick={() => onBuy(plan.service, plan.price)} type="button">
+        <div className="product-price"><strong>{formatNumber(product.price_toman)}</strong><small>تومان</small></div>
+        <button className="button-primary buy-button" onClick={() => onBuy(product.name, product.price_toman)} type="button">
           خرید با کیف پول <ArrowLeft size={16} />
         </button>
       </div>
-      <span className={`card-accent ${plan.accent}`} />
+      <span className={`card-accent ${accent}`} />
     </article>
   );
 }

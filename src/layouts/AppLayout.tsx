@@ -5,7 +5,6 @@ import type { MainTab } from "../types";
 
 interface AppLayoutProps {
   activeTab: MainTab;
-  balance: number;
   isDark: boolean;
   onTabChange: (tab: MainTab) => void;
   onToggleTheme: () => void;
@@ -15,7 +14,6 @@ interface AppLayoutProps {
 
 export function AppLayout({
   activeTab,
-  balance,
   isDark,
   onTabChange,
   onToggleTheme,
@@ -26,7 +24,7 @@ export function AppLayout({
     <div className="app-frame min-h-screen bg-[var(--bg)] text-[var(--text)] dark:bg-[var(--bg)] dark:text-[var(--text)]">
       <div className="ambient ambient-one" />
       <div className="ambient ambient-two" />
-      <AppHeader balance={balance} isDark={isDark} onOpenWallet={onOpenWallet} onToggleTheme={onToggleTheme} />
+      <AppHeader isDark={isDark} onOpenWallet={onOpenWallet} onToggleTheme={onToggleTheme} />
       <main className="main-content" id="main-content">{children}</main>
       <BottomNavigation activeTab={activeTab} onChange={onTabChange} />
     </div>

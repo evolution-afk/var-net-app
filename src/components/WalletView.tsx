@@ -1,15 +1,16 @@
 import { useState, type FormEvent } from "react";
 import { ArrowDownLeft, ArrowLeft, ArrowUpLeft, Check, Clock3, Copy, CreditCard, Info, Plus, Wallet } from "lucide-react";
+import { useUser } from "../context/UserContext";
 import { transactions } from "../mockData";
 import type { Transaction } from "../types";
 import { formatNumber, formatToman } from "../utils/format";
 
 interface WalletViewProps {
-  balance: number;
   onNotify: (title: string, tone?: "success" | "info") => void;
 }
 
-export function WalletView({ balance, onNotify }: WalletViewProps) {
+export function WalletView({ onNotify }: WalletViewProps) {
+  const { walletBalance, isLoading, error } = useUser();
   const [receiptId, setReceiptId] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
@@ -36,12 +37,14 @@ export function WalletView({ balance, onNotify }: WalletViewProps) {
         <div><span className="eyebrow">اعتبار و پرداخت</span><h1>کیف پول</h1><p>موجودی‌ات را مدیریت و گردش حساب را دنبال کن.</p></div>
       </div>
 
+      {error && <p role="alert">دریافت موجودی کیف پول ناموفق بود. لطفاً صفحه را دوباره بارگذاری کنید.</p>}
+
       <div className="wallet-layout">
         <div className="wallet-main-column">
           <section className="wallet-balance-card">
             <div className="wallet-card-glow" />
             <div className="wallet-balance-top"><span><Wallet size={17} /> موجودی قابل استفاده</span><span className="wallet-card-mark">VAR <i>NET</i></span></div>
-            <strong className="wallet-amount">{formatNumber(balance)}<small>تومان</small></strong>
+            <strong className="wallet-amount">{isLoading ? "…" : error ? "—" : formatNumber(walletBalance)}<small>تومان</small></strong>
             <div className="wallet-card-bottom"><span>حساب کاربری ور نت</span><span>•••• ۲۰۴۸</span></div>
           </section>
 

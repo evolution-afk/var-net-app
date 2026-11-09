@@ -4,7 +4,7 @@ import type { StoreCategory } from "../types";
 import { formatNumber } from "../utils/format";
 import { SegmentedControl } from "./SegmentedControl";
 
-interface Product {
+export interface Product {
   id: number;
   type: StoreCategory;
   name: string;
@@ -17,10 +17,11 @@ interface Product {
 }
 
 interface StoreViewProps {
-  onBuy: (name: string, price: number) => void;
+  onBuy: (product: Product) => void;
+  processingProductId: number | null;
 }
 
-export function StoreView({ onBuy }: StoreViewProps) {
+export function StoreView({ onBuy, processingProductId }: StoreViewProps) {
   const [category, setCategory] = useState<StoreCategory>("vpn");
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -102,9 +103,9 @@ export function StoreView({ onBuy }: StoreViewProps) {
             .filter((product) => product.type === category)
             .map((product) =>
               product.type === "vpn" ? (
-                <VpnProductCard key={product.id} product={product} onBuy={onBuy} />
+                <VpnProductCard key={product.id} product={product} onBuy={onBuy} processing={processingProductId === product.id} disabled={processingProductId !== null} />
               ) : (
-                <AiProductCard key={product.id} product={product} onBuy={onBuy} />
+                <AiProductCard key={product.id} product={product} onBuy={onBuy} processing={processingProductId === product.id} disabled={processingProductId !== null} />
               ),
             )
         )}
@@ -119,7 +120,17 @@ export function StoreView({ onBuy }: StoreViewProps) {
   );
 }
 
-function VpnProductCard({ product, onBuy }: { product: Product; onBuy: (name: string, price: number) => void }) {
+function VpnProductCard({
+  product,
+  onBuy,
+  processing,
+  disabled,
+}: {
+  product: Product;
+  onBuy: (product: Product) => void;
+  processing: boolean;
+  disabled: boolean;
+}) {
   const quota = product.metadata.quota_gb;
   const duration = product.metadata.duration_months;
 
@@ -140,15 +151,25 @@ function VpnProductCard({ product, onBuy }: { product: Product; onBuy: (name: st
       </div>
       <div className="product-card-footer">
         <div className="product-price"><strong>{formatNumber(product.price_toman)}</strong><small>تومان</small></div>
-        <button className="button-primary buy-button" onClick={() => onBuy(product.name, product.price_toman)} type="button">
-          خرید با کیف پول <ArrowLeft size={16} />
+        <button className="button-primary buy-button" disabled={disabled} onClick={() => onBuy(product)} type="button">
+          {processing ? "در حال ثبت…" : <>خرید با کیف پول <ArrowLeft size={16} /></>}
         </button>
       </div>
     </article>
   );
 }
 
-function AiProductCard({ product, onBuy }: { product: Product; onBuy: (name: string, price: number) => void }) {
+function AiProductCard({
+  product,
+  onBuy,
+  processing,
+  disabled,
+}: {
+  product: Product;
+  onBuy: (product: Product) => void;
+  processing: boolean;
+  disabled: boolean;
+}) {
   const isShared = product.metadata.type === "shared";
   const accent = product.name.toLowerCase().includes("claude") ? "violet" : "green";
 
@@ -169,8 +190,8 @@ function AiProductCard({ product, onBuy }: { product: Product; onBuy: (name: str
       </div>
       <div className="product-card-footer">
         <div className="product-price"><strong>{formatNumber(product.price_toman)}</strong><small>تومان</small></div>
-        <button className="button-primary buy-button" onClick={() => onBuy(product.name, product.price_toman)} type="button">
-          خرید با کیف پول <ArrowLeft size={16} />
+        <button className="button-primary buy-button" disabled={disabled} onClick={() => onBuy(product)} type="button">
+          {processing ? "در حال ثبت…" : <>خرید با کیف پول <ArrowLeft size={16} /></>}
         </button>
       </div>
       <span className={`card-accent ${accent}`} />

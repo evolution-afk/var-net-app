@@ -1,15 +1,17 @@
 import { ArrowDownLeft, ChevronDown, ShieldCheck } from "lucide-react";
+import { useUser } from "../context/UserContext";
 import { formatToman } from "../utils/format";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface AppHeaderProps {
-  balance: number;
   isDark: boolean;
   onToggleTheme: () => void;
   onOpenWallet: () => void;
 }
 
-export function AppHeader({ balance, isDark, onToggleTheme, onOpenWallet }: AppHeaderProps) {
+export function AppHeader({ isDark, onToggleTheme, onOpenWallet }: AppHeaderProps) {
+  const { walletBalance, isLoading, error } = useUser();
+
   return (
     <header className="app-header">
       <div className="brand-lockup" aria-label="ور نت">
@@ -27,7 +29,7 @@ export function AppHeader({ balance, isDark, onToggleTheme, onOpenWallet }: AppH
           <span className="balance-chip-icon"><ArrowDownLeft size={15} /></span>
           <span className="balance-chip-copy">
             <small>موجودی کیف پول</small>
-            <strong>{formatToman(balance)}</strong>
+            <strong>{isLoading ? "…" : error ? "نامشخص" : formatToman(walletBalance)}</strong>
           </span>
           <ChevronDown className="balance-chevron" size={14} />
         </button>

@@ -1070,23 +1070,45 @@ function isLocalRequest(request) {
 }
 __name(isLocalRequest, "isLocalRequest");
 __name2(isLocalRequest, "isLocalRequest");
-function makeOvpnContent(serverCode, username, password) {
-  return [
-    "client",
-    "dev tun",
-    "proto udp",
-    `remote ${serverCode}.vpn.example.invalid 1194`,
-    "resolv-retry infinite",
-    "nobind",
-    "persist-key",
-    "persist-tun",
-    "remote-cert-tls server",
-    "<auth-user-pass>",
-    username,
-    password,
-    "</auth-user-pass>",
-    ""
-  ].join("\n");
+function makeOvpnContent(serverCode, username, password, env2) {
+  if (serverCode !== "de") {
+    throw new Error(`Unsupported VPN server code: ${serverCode}`);
+  }
+  return `client
+dev tun
+proto udp
+remote ov.popserver.shop 1090
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+cipher AES-256-CBC
+auth SHA1
+auth-user-pass
+redirect-gateway def1
+verb 3
+tun-mtu 1500
+tls-client
+pull
+
+<auth-user-pass>
+${username}
+${password}
+</auth-user-pass>
+
+<ca>
+${env2.OVPN_CA_CERT}
+</ca>
+
+<cert>
+${env2.OVPN_CLIENT_CERT}
+</cert>
+
+<key>
+${env2.OVPN_CLIENT_KEY}
+</key>
+`;
 }
 __name(makeOvpnContent, "makeOvpnContent");
 __name2(makeOvpnContent, "makeOvpnContent");
@@ -1175,12 +1197,16 @@ async function onRequestGet2({ request, env: env2 }) {
     subscription = { radius_username: username2, radius_password: password2 };
   }
   const { radius_username: username, radius_password: password } = subscription;
+  if (!env2.OVPN_CA_CERT || !env2.OVPN_CLIENT_CERT || !env2.OVPN_CLIENT_KEY) {
+    return Response.json({ error: "OpenVPN certificate configuration is incomplete" }, { status: 503 });
+  }
+  const ovpnContent = makeOvpnContent(serverCode, username, password, env2);
   return Response.json(
     {
       success: true,
       username,
       password,
-      ovpnContent: makeOvpnContent(serverCode, username, password)
+      ovpnContent
     },
     { headers: { "Cache-Control": "no-store, private" } }
   );

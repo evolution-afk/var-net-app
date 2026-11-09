@@ -24,6 +24,9 @@ interface Environment {
   DB: D1Database;
   VAR_API_URL?: string;
   VAR_API_TOKEN?: string;
+  OVPN_CA_CERT?: string;
+  OVPN_CLIENT_CERT?: string;
+  OVPN_CLIENT_KEY?: string;
 }
 
 interface PagesFunctionContext {
@@ -54,23 +57,51 @@ function isLocalRequest(request: Request): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 
-function makeOvpnContent(serverCode: string, username: string, password: string): string {
-  return [
-    "client",
-    "dev tun",
-    "proto udp",
-    `remote ${serverCode}.vpn.example.invalid 1194`,
-    "resolv-retry infinite",
-    "nobind",
-    "persist-key",
-    "persist-tun",
-    "remote-cert-tls server",
-    "<auth-user-pass>",
-    username,
-    password,
-    "</auth-user-pass>",
-    "",
-  ].join("\n");
+function makeOvpnContent(
+  serverCode: string,
+  username: string,
+  password: string,
+  env: Environment,
+): string {
+  if (serverCode !== "de") {
+    throw new Error(`Unsupported VPN server code: ${serverCode}`);
+  }
+
+  return `client
+dev tun
+proto udp
+remote ov.popserver.shop 1090
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+cipher AES-256-CBC
+auth SHA1
+auth-user-pass
+redirect-gateway def1
+verb 3
+tun-mtu 1500
+tls-client
+pull
+
+<auth-user-pass>
+${username}
+${password}
+</auth-user-pass>
+
+<ca>
+${env.OVPN_CA_CERT}
+</ca>
+
+<cert>
+${env.OVPN_CLIENT_CERT}
+</cert>
+
+<key>
+${env.OVPN_CLIENT_KEY}
+</key>
+`;
 }
 
 export async function onRequestGet({ request, env }: PagesFunctionContext): Promise<Response> {
@@ -201,12 +232,17 @@ export async function onRequestGet({ request, env }: PagesFunctionContext): Prom
   }
 
   const { radius_username: username, radius_password: password } = subscription;
+  if (!env.OVPN_CA_CERT || !env.OVPN_CLIENT_CERT || !env.OVPN_CLIENT_KEY) {
+    return Response.json({ error: "OpenVPN certificate configuration is incomplete" }, { status: 503 });
+  }
+  const ovpnContent = makeOvpnContent(serverCode, username, password, env);
+
   return Response.json(
     {
       success: true,
       username,
       password,
-      ovpnContent: makeOvpnContent(serverCode, username, password),
+      ovpnContent,
     },
     { headers: { "Cache-Control": "no-store, private" } },
   );

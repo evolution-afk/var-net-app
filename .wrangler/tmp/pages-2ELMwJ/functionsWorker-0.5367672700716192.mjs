@@ -1068,23 +1068,45 @@ function isLocalRequest(request) {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 __name(isLocalRequest, "isLocalRequest");
-function makeOvpnContent(serverCode, username, password) {
-  return [
-    "client",
-    "dev tun",
-    "proto udp",
-    `remote ${serverCode}.vpn.example.invalid 1194`,
-    "resolv-retry infinite",
-    "nobind",
-    "persist-key",
-    "persist-tun",
-    "remote-cert-tls server",
-    "<auth-user-pass>",
-    username,
-    password,
-    "</auth-user-pass>",
-    ""
-  ].join("\n");
+function makeOvpnContent(serverCode, username, password, env2) {
+  if (serverCode !== "de") {
+    throw new Error(`Unsupported VPN server code: ${serverCode}`);
+  }
+  return `client
+dev tun
+proto udp
+remote ov.popserver.shop 1090
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+cipher AES-256-CBC
+auth SHA1
+auth-user-pass
+redirect-gateway def1
+verb 3
+tun-mtu 1500
+tls-client
+pull
+
+<auth-user-pass>
+${username}
+${password}
+</auth-user-pass>
+
+<ca>
+${env2.OVPN_CA_CERT}
+</ca>
+
+<cert>
+${env2.OVPN_CLIENT_CERT}
+</cert>
+
+<key>
+${env2.OVPN_CLIENT_KEY}
+</key>
+`;
 }
 __name(makeOvpnContent, "makeOvpnContent");
 async function onRequestGet2({ request, env: env2 }) {
@@ -1172,12 +1194,16 @@ async function onRequestGet2({ request, env: env2 }) {
     subscription = { radius_username: username2, radius_password: password2 };
   }
   const { radius_username: username, radius_password: password } = subscription;
+  if (!env2.OVPN_CA_CERT || !env2.OVPN_CLIENT_CERT || !env2.OVPN_CLIENT_KEY) {
+    return Response.json({ error: "OpenVPN certificate configuration is incomplete" }, { status: 503 });
+  }
+  const ovpnContent = makeOvpnContent(serverCode, username, password, env2);
   return Response.json(
     {
       success: true,
       username,
       password,
-      ovpnContent: makeOvpnContent(serverCode, username, password)
+      ovpnContent
     },
     { headers: { "Cache-Control": "no-store, private" } }
   );
@@ -1764,7 +1790,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env2, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// ../.wrangler/tmp/bundle-LAgFye/middleware-insertion-facade.js
+// ../.wrangler/tmp/bundle-Z7T4ph/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -1796,7 +1822,7 @@ function __facade_invoke__(request, env2, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// ../.wrangler/tmp/bundle-LAgFye/middleware-loader.entry.ts
+// ../.wrangler/tmp/bundle-Z7T4ph/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;

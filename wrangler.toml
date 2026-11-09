@@ -1,4 +1,4 @@
-name = "var-net"
+name = "var-net-app"
 compatibility_date = "2026-10-13"
 pages_build_output_dir = "./dist"
 

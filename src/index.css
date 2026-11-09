@@ -177,7 +177,11 @@ button:focus-visible, input:focus-visible { outline: 3px solid color-mix(in srgb
 .service-count .live-dot { width: 6px; height: 6px; }
 .dashboard-toolbar { gap: 14px; margin-bottom: 17px; }
 .last-updated { color: var(--muted); font-size: 9px; }
-.dashboard-list { animation: rise-in .25s ease both; }
+.dashboard-list { display: grid; gap: 14px; animation: rise-in .25s ease both; }
+.dashboard-empty { display: flex; min-height: 150px; flex-direction: column; align-items: center; justify-content: center; gap: 9px; color: var(--muted); text-align: center; }
+.dashboard-empty svg { color: var(--primary); }
+.dashboard-empty strong { color: var(--text); font-size: 13px; }
+.dashboard-empty span { font-size: 10px; }
 .service-card, .wallet-panel { border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: 0 14px 38px -32px rgba(19, 50, 78, .3); }
 .service-card { padding: 22px; }
 .service-card-heading { gap: 12px; }

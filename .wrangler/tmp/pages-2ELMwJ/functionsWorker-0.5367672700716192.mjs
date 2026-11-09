@@ -943,6 +943,27 @@ function getUserFromRequest(request, _env) {
 }
 __name(getUserFromRequest, "getUserFromRequest");
 
+// api/dashboard/my.ts
+async function onRequestGet({ request, env: env2 }) {
+  const userId = getUserFromRequest(request, env2);
+  if (userId === null) {
+    return Response.json({ error: "Authentication required" }, { status: 401 });
+  }
+  const { results } = await env2.DB.prepare(
+    `SELECT o.id as order_id, o.created_at, p.type, p.name, p.metadata
+       FROM orders o
+       JOIN products p ON o.product_id = p.id
+       WHERE o.user_id = ?1 AND o.status = 'completed'
+       ORDER BY o.created_at DESC`
+  ).bind(userId).all();
+  const orders = results.map((order) => ({
+    ...order,
+    metadata: JSON.parse(order.metadata)
+  }));
+  return Response.json(orders);
+}
+__name(onRequestGet, "onRequestGet");
+
 // api/orders/create.ts
 async function onRequestPost({ request, env: env2 }) {
   const userId = getUserFromRequest(request, env2);
@@ -1026,6 +1047,143 @@ async function onRequestPost({ request, env: env2 }) {
 }
 __name(onRequestPost, "onRequestPost");
 
+// api/vpn/config.ts
+var TOKEN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+function generateCredential() {
+  const maxByte = 256 - 256 % TOKEN_ALPHABET.length;
+  let credential = "";
+  while (credential.length < 6) {
+    const bytes = new Uint8Array(8);
+    crypto.getRandomValues(bytes);
+    for (const byte of bytes) {
+      if (byte < maxByte) credential += TOKEN_ALPHABET[byte % TOKEN_ALPHABET.length];
+      if (credential.length === 6) break;
+    }
+  }
+  return credential;
+}
+__name(generateCredential, "generateCredential");
+function isLocalRequest(request) {
+  const hostname = new URL(request.url).hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+__name(isLocalRequest, "isLocalRequest");
+function makeOvpnContent(serverCode, username, password) {
+  return [
+    "client",
+    "dev tun",
+    "proto udp",
+    `remote ${serverCode}.vpn.example.invalid 1194`,
+    "resolv-retry infinite",
+    "nobind",
+    "persist-key",
+    "persist-tun",
+    "remote-cert-tls server",
+    "<auth-user-pass>",
+    username,
+    password,
+    "</auth-user-pass>",
+    ""
+  ].join("\n");
+}
+__name(makeOvpnContent, "makeOvpnContent");
+async function onRequestGet2({ request, env: env2 }) {
+  const userId = getUserFromRequest(request, env2);
+  if (userId === null) {
+    return Response.json({ error: "Authentication required" }, { status: 401 });
+  }
+  const url = new URL(request.url);
+  const orderIdValue = url.searchParams.get("orderId");
+  const serverCode = url.searchParams.get("serverCode");
+  if (orderIdValue === null || !/^[1-9]\d*$/.test(orderIdValue) || !Number.isSafeInteger(Number(orderIdValue)) || serverCode === null) {
+    return Response.json({ error: "Valid orderId and serverCode are required" }, { status: 400 });
+  }
+  if (serverCode !== "de") {
+    return Response.json({ error: "This VPN server is not available yet" }, { status: 400 });
+  }
+  const orderId = Number(orderIdValue);
+  const order = await env2.DB.prepare(
+    `SELECT p.type, p.metadata
+       FROM orders o
+       JOIN products p ON o.product_id = p.id
+       WHERE o.id = ?1 AND o.user_id = ?2 AND o.status = 'completed'`
+  ).bind(orderId, userId).first();
+  if (order === null || order.type !== "vpn") {
+    return Response.json({ error: "Completed VPN order not found" }, { status: 404 });
+  }
+  let metadata;
+  try {
+    metadata = JSON.parse(order.metadata);
+  } catch {
+    throw new Error(`Invalid product metadata for VPN order ${orderId}`);
+  }
+  if (typeof metadata !== "object" || metadata === null || !("quota_gb" in metadata) || typeof metadata.quota_gb !== "number" || !Number.isFinite(metadata.quota_gb) || metadata.quota_gb < 0) {
+    throw new Error(`Missing or invalid VPN quota for order ${orderId}`);
+  }
+  let subscription = await env2.DB.prepare(
+    `SELECT radius_username, radius_password
+       FROM vpn_subscriptions
+       WHERE order_id = ?1 AND server_code = ?2`
+  ).bind(orderId, serverCode).first();
+  if (subscription === null) {
+    const username2 = generateCredential();
+    const password2 = generateCredential();
+    if (env2.VAR_API_URL === void 0) {
+      if (!isLocalRequest(request)) {
+        return Response.json({ error: "VPN provisioning is not configured" }, { status: 503 });
+      }
+    } else {
+      if (env2.VAR_API_TOKEN === void 0 || env2.VAR_API_TOKEN.length === 0) {
+        return Response.json({ error: "VPN provisioning is not configured" }, { status: 503 });
+      }
+      let bridgeUrl;
+      try {
+        bridgeUrl = new URL("/api/radius/create", env2.VAR_API_URL);
+        if (bridgeUrl.protocol !== "https:" && !isLocalRequest(request)) {
+          return Response.json({ error: "VPN provisioning endpoint must use HTTPS" }, { status: 503 });
+        }
+      } catch {
+        return Response.json({ error: "VPN provisioning endpoint is invalid" }, { status: 503 });
+      }
+      try {
+        const bridgeResponse = await fetch(bridgeUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env2.VAR_API_TOKEN}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ username: username2, password: password2, quotaGb: metadata.quota_gb })
+        });
+        if (!bridgeResponse.ok) {
+          return Response.json({ error: "VPN account could not be provisioned" }, { status: 502 });
+        }
+      } catch {
+        return Response.json({ error: "VPN provisioning service is unavailable" }, { status: 502 });
+      }
+    }
+    const durationMonths = "duration_months" in metadata && typeof metadata.duration_months === "number" && Number.isFinite(metadata.duration_months) && metadata.duration_months > 0 ? metadata.duration_months : 1;
+    const expiryDate = /* @__PURE__ */ new Date();
+    expiryDate.setUTCMonth(expiryDate.getUTCMonth() + durationMonths);
+    await env2.DB.prepare(
+      `INSERT INTO vpn_subscriptions
+         (order_id, radius_username, radius_password, server_code, expiry_date, quota_limit_gb)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+    ).bind(orderId, username2, password2, serverCode, expiryDate.toISOString(), metadata.quota_gb).run();
+    subscription = { radius_username: username2, radius_password: password2 };
+  }
+  const { radius_username: username, radius_password: password } = subscription;
+  return Response.json(
+    {
+      success: true,
+      username,
+      password,
+      ovpnContent: makeOvpnContent(serverCode, username, password)
+    },
+    { headers: { "Cache-Control": "no-store, private" } }
+  );
+}
+__name(onRequestGet2, "onRequestGet");
+
 // api/user/me.ts
 async function onRequest({ request, env: env2 }) {
   const userId = getUserFromRequest(request, env2);
@@ -1046,7 +1204,7 @@ async function onRequest({ request, env: env2 }) {
 __name(onRequest, "onRequest");
 
 // api/products.ts
-async function onRequestGet({ env: env2 }) {
+async function onRequestGet3({ env: env2 }) {
   const { results } = await env2.DB.prepare("SELECT * FROM products WHERE is_active = 1").all();
   const products = results.map((product) => ({
     ...product,
@@ -1054,7 +1212,7 @@ async function onRequestGet({ env: env2 }) {
   }));
   return Response.json(products);
 }
-__name(onRequestGet, "onRequestGet");
+__name(onRequestGet3, "onRequestGet");
 
 // api/health.ts
 function onRequest2() {
@@ -1070,11 +1228,25 @@ __name(onRequest2, "onRequest");
 // ../.wrangler/tmp/pages-2ELMwJ/functionsRoutes-0.549173674962637.mjs
 var routes = [
   {
+    routePath: "/api/dashboard/my",
+    mountPath: "/api/dashboard",
+    method: "GET",
+    middlewares: [],
+    modules: [onRequestGet]
+  },
+  {
     routePath: "/api/orders/create",
     mountPath: "/api/orders",
     method: "POST",
     middlewares: [],
     modules: [onRequestPost]
+  },
+  {
+    routePath: "/api/vpn/config",
+    mountPath: "/api/vpn",
+    method: "GET",
+    middlewares: [],
+    modules: [onRequestGet2]
   },
   {
     routePath: "/api/user/me",
@@ -1088,7 +1260,7 @@ var routes = [
     mountPath: "/api",
     method: "GET",
     middlewares: [],
-    modules: [onRequestGet]
+    modules: [onRequestGet3]
   },
   {
     routePath: "/api/health",
@@ -1592,7 +1764,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env2, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// ../.wrangler/tmp/bundle-Fo6fZT/middleware-insertion-facade.js
+// ../.wrangler/tmp/bundle-LAgFye/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -1624,7 +1796,7 @@ function __facade_invoke__(request, env2, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// ../.wrangler/tmp/bundle-Fo6fZT/middleware-loader.entry.ts
+// ../.wrangler/tmp/bundle-LAgFye/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;

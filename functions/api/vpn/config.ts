@@ -57,6 +57,24 @@ function isLocalRequest(request: Request): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 
+function isPrivateIPv4Address(hostname: string): boolean {
+  const octets = hostname.split(".");
+  if (
+    octets.length !== 4 ||
+    octets.some((octet) => !/^\d{1,3}$/.test(octet) || Number(octet) > 255)
+  ) {
+    return false;
+  }
+
+  const [first, second] = octets.map(Number);
+  return (
+    first === 10 ||
+    first === 127 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
+
 function makeOvpnContent(
   serverCode: string,
   username: string,
@@ -184,7 +202,11 @@ export async function onRequestGet({ request, env }: PagesFunctionContext): Prom
       let bridgeUrl: URL;
       try {
         bridgeUrl = new URL("/api/radius/create", env.VAR_API_URL);
-        if (bridgeUrl.protocol !== "https:" && !isLocalRequest(request)) {
+        if (
+          bridgeUrl.protocol !== "https:" &&
+          !isLocalRequest(request) &&
+          !isPrivateIPv4Address(bridgeUrl.hostname)
+        ) {
           return Response.json({ error: "VPN provisioning endpoint must use HTTPS" }, { status: 503 });
         }
       } catch {

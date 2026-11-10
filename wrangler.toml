@@ -1,9 +1,10 @@
 name = "var-net-app"
 compatibility_date = "2026-10-13"
+
 [assets]
 directory = "./dist"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "var-net-db"
 database_id = "8709c848-b134-42e3-819c-0e6a95134e0f"
-preview_database_id = "00000000-0000-0000-0000-000000000002"

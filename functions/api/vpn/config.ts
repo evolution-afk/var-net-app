@@ -226,10 +226,22 @@ export async function onRequestGet({ request, env }: PagesFunctionContext): Prom
         });
 
         if (!bridgeResponse.ok) {
-          return Response.json({ error: "VPN account could not be provisioned" }, { status: 502 });
+          const bridgeBody = await bridgeResponse.text().catch(() => "");
+          return Response.json(
+            {
+              error:
+                `VPN account could not be provisioned: ${bridgeResponse.status} ` +
+                `${bridgeResponse.statusText}${bridgeBody ? ` - ${bridgeBody}` : ""}`,
+            },
+            { status: 502 },
+          );
         }
-      } catch {
-        return Response.json({ error: "VPN provisioning service is unavailable" }, { status: 502 });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return Response.json(
+          { error: `VPN provisioning service is unavailable: ${message}` },
+          { status: 502 },
+        );
       }
     }
 

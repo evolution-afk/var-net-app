@@ -202,13 +202,15 @@ export async function onRequestGet({ request, env }: PagesFunctionContext): Prom
       let bridgeUrl: URL;
       try {
         bridgeUrl = new URL("/api/radius/create", env.VAR_API_URL);
-        if (
-          bridgeUrl.protocol !== "https:" &&
-          !isLocalRequest(request) &&
-          !isPrivateIPv4Address(bridgeUrl.hostname)
-        ) {
-          return Response.json({ error: "VPN provisioning endpoint must use HTTPS" }, { status: 503 });
-        }
+        // NOTE: HTTPS enforcement intentionally disabled for testing.
+        // http:// is now allowed for ALL IP addresses (no isLocalRequest / private IP checks).
+        // if (
+        //   bridgeUrl.protocol !== "https:" &&
+        //   !isLocalRequest(request) &&
+        //   !isPrivateIPv4Address(bridgeUrl.hostname)
+        // ) {
+        //   return Response.json({ error: "VPN provisioning endpoint must use HTTPS" }, { status: 503 });
+        // }
       } catch {
         return Response.json({ error: "VPN provisioning endpoint is invalid" }, { status: 503 });
       }

@@ -24,7 +24,7 @@ interface PagesFunctionContext {
 }
 
 export async function onRequest({ request, env }: PagesFunctionContext): Promise<Response> {
-  const userId = getUserFromRequest(request, env);
+  const userId = await getUserFromRequest(request, env);
   if (userId === null) {
     return Response.json({ error: "Authentication required" }, { status: 401 });
   }

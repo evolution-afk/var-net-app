@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Check, Clock3, Globe2, ShieldCheck, Sparkles, Zap } from "lucide-react";
 import type { StoreCategory } from "../types";
 import { formatNumber } from "../utils/format";
+import { apiFetch } from "../utils/api";
 import { SegmentedControl } from "./SegmentedControl";
 
 export interface Product {
@@ -32,7 +33,7 @@ export function StoreView({ onBuy, processingProductId }: StoreViewProps) {
 
     async function loadProducts() {
       try {
-        const response = await fetch("/api/products", { signal: controller.signal });
+        const response = await apiFetch("/api/products", { signal: controller.signal });
         if (!response.ok) {
           throw new Error(`Products request failed (${response.status})`);
         }

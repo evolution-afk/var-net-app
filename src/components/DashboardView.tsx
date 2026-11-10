@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Check, Download, Globe2, ShieldCheck, Sparkles, Wifi } from "lucide-react";
 import type { DashboardCategory } from "../types";
 import { formatNumber } from "../utils/format";
+import { apiFetch } from "../utils/api";
 import { SegmentedControl } from "./SegmentedControl";
 
 interface DashboardViewProps {
@@ -37,7 +38,7 @@ export function DashboardView({ onNotify }: DashboardViewProps) {
 
     async function loadServices() {
       try {
-        const response = await fetch("/api/dashboard/my", { signal: controller.signal });
+        const response = await apiFetch("/api/dashboard/my", { signal: controller.signal });
         if (!response.ok) {
           throw new Error(`Services request failed (${response.status})`);
         }
@@ -130,7 +131,7 @@ function MyVpnCard({ service, onNotify }: { service: PurchasedService; onNotify:
         orderId: String(service.order_id),
         serverCode: "de",
       });
-      const response = await fetch(`/api/vpn/config?${params.toString()}`);
+      const response = await apiFetch(`/api/vpn/config?${params.toString()}`);
       const result: unknown = await response.json();
 
       if (!response.ok) {
@@ -213,6 +214,51 @@ function MyVpnCard({ service, onNotify }: { service: PurchasedService; onNotify:
 function MyAiCard({ service, onNotify }: { service: PurchasedService; onNotify: DashboardViewProps["onNotify"] }) {
   const isShared = service.metadata.type === "shared";
   const duration = service.metadata.duration_months;
+  const [isLoadingCredentials, setIsLoadingCredentials] = useState(false);
+
+  async function viewCredentials() {
+    if (isLoadingCredentials) return;
+    setIsLoadingCredentials(true);
+    try {
+      const params = new URLSearchParams({ orderId: String(service.order_id) });
+      const response = await apiFetch(`/api/ai/credentials?${params.toString()}`);
+      const result: unknown = await response.json();
+
+      if (!response.ok) {
+        const message =
+          typeof result === "object" && result !== null && "error" in result && typeof result.error === "string"
+            ? result.error
+            : "دریافت اطلاعات حساب ناموفق بود.";
+        throw new Error(message);
+      }
+
+      if (
+        typeof result !== "object" ||
+        result === null ||
+        !("success" in result) ||
+        result.success !== true ||
+        !("email" in result) ||
+        typeof result.email !== "string" ||
+        !("password" in result) ||
+        typeof result.password !== "string" ||
+        !("licenseKey" in result) ||
+        typeof result.licenseKey !== "string"
+      ) {
+        throw new Error("پاسخ اطلاعات حساب معتبر نیست.");
+      }
+
+      window.alert(
+        `اطلاعات حساب هوش مصنوعی\n\nایمیل: ${result.email}\nرمز عبور: ${result.password}\nکلید لایسنس: ${result.licenseKey}`,
+      );
+    } catch (requestError) {
+      onNotify(
+        requestError instanceof Error ? requestError.message : "دریافت اطلاعات حساب ناموفق بود.",
+        "info",
+      );
+    } finally {
+      setIsLoadingCredentials(false);
+    }
+  }
 
   return (
     <article className="service-card ai-service-card">
@@ -235,16 +281,34 @@ function MyAiCard({ service, onNotify }: { service: PurchasedService; onNotify: 
         </div>
       </div>
 
-      <ServiceCardFooter orderId={service.order_id} onNotify={onNotify} />
+      <ServiceCardFooter
+        actionLabel={isLoadingCredentials ? "در حال دریافت…" : "مشاهده لایسنس"}
+        disabled={isLoadingCredentials}
+        onAction={() => void viewCredentials()}
+        orderId={service.order_id}
+        onNotify={onNotify}
+      />
     </article>
   );
 }
 
-function ServiceCardFooter({ orderId, onNotify }: { orderId: number; onNotify: DashboardViewProps["onNotify"] }) {
+function ServiceCardFooter({
+  orderId,
+  onNotify,
+  actionLabel = "جزئیات سرویس",
+  onAction = () => onNotify("اطلاعات سرویس به‌روز است.", "info"),
+  disabled = false,
+}: {
+  orderId: number;
+  onNotify: DashboardViewProps["onNotify"];
+  actionLabel?: string;
+  onAction?: () => void;
+  disabled?: boolean;
+}) {
   return (
     <div className="service-card-footer">
       <span><Check size={15} /> سفارش #{formatNumber(orderId)}</span>
-      <button type="button" onClick={() => onNotify("اطلاعات سرویس به‌روز است.", "info")}>جزئیات سرویس <ArrowLeft size={15} /></button>
+      <button disabled={disabled} type="button" onClick={onAction}>{actionLabel} <ArrowLeft size={15} /></button>
     </div>
   );
 }

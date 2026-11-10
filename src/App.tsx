@@ -6,6 +6,7 @@ import { WalletView } from "./components/WalletView";
 import { useUser } from "./context/UserContext";
 import { AppLayout } from "./layouts/AppLayout";
 import type { MainTab, ToastMessage } from "./types";
+import { apiFetch } from "./utils/api";
 import { formatToman } from "./utils/format";
 
 interface PurchaseIntent {
@@ -23,6 +24,11 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   useEffect(() => {
+    window.Telegram?.WebApp.ready();
+    window.Telegram?.WebApp.expand();
+  }, []);
+
+  useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
     localStorage.setItem("varnet-theme", isDark ? "dark" : "light");
   }, [isDark]);
@@ -32,7 +38,7 @@ export default function App() {
 
     async function loadUser() {
       try {
-        const response = await fetch("/api/user/me", { signal: controller.signal });
+        const response = await apiFetch("/api/user/me", { signal: controller.signal });
         if (!response.ok) {
           throw new Error(`User request failed (${response.status})`);
         }
@@ -85,7 +91,7 @@ export default function App() {
     setProcessingProductId(purchase.product.id);
     setPurchaseError(null);
     try {
-      const response = await fetch("/api/orders/create", {
+      const response = await apiFetch("/api/orders/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productId: purchase.product.id }),

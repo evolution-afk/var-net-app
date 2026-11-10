@@ -17,6 +17,7 @@ interface D1Result {
 interface D1Statement {
   bind(...values: (number | string)[]): D1Statement;
   first<T>(): Promise<T | null>;
+  run(): Promise<unknown>;
 }
 
 interface D1Database {
@@ -34,7 +35,7 @@ interface PagesFunctionContext {
 }
 
 export async function onRequestPost({ request, env }: PagesFunctionContext): Promise<Response> {
-  const userId = getUserFromRequest(request, env);
+  const userId = await getUserFromRequest(request, env);
   if (userId === null) {
     return Response.json({ error: "Authentication required" }, { status: 401 });
   }
